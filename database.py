@@ -106,4 +106,4 @@ if __name__ == "__main__":
     db = DatabaseManager()
     print("Veritabanı ve tablolar başarıyla oluşturuldu!")
     
-    db.kullanici_ekle("mehmet", "sifre123")
+    db.kullanici_ekle("mehmett", "1234")
