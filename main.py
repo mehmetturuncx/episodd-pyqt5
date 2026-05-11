@@ -5,9 +5,12 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QGridLayout, QScrollArea, QMessageBox, QTabWidget,
                              QDialog, QComboBox, QSpinBox, QTextEdit, QDesktopWidget, QAction, QGroupBox, QFormLayout)
 from PyQt5.QtGui import QPixmap, QFont, QCursor, QIcon
-from PyQt5.QtCore import Qt, pyqtSignal, QThread
+from PyQt5.QtCore import Qt, pyqtSignal, QThread, QTimer, QRect, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QPoint
 from api_manager import MovieAPI
 from database import DatabaseManager
+from PyQt5.QtGui import QPainter, QColor
+import qtawesome as qta
+
 
 class PosterLoader(QThread):
     poster_downloaded = pyqtSignal(bytes)
@@ -47,61 +50,75 @@ class SearchLoader(QThread):
         self.search_completed.emit(sonuclar or [])
 
 class StarRatingWidget(QWidget):
-    ratingChanged = pyqtSignal(int)
+    ratingChanged = pyqtSignal(float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMouseTracking(True)
-        self._rating = 0
-        self._hover_rating = 0
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
-        
-        self.stars = []
-        for i in range(1, 6):
-            lbl = QLabel("☆")
-            lbl.setStyleSheet("color: #f5c518; font-size: 28px;")
-            lbl.setCursor(QCursor(Qt.PointingHandCursor))
-            lbl.mousePressEvent = lambda e, val=i: self.set_rating(val)
-            lbl.enterEvent = lambda e, val=i: self.set_hover(val)
-            lbl.leaveEvent = lambda e: self.clear_hover()
-            self.stars.append(lbl)
-            layout.addWidget(lbl)
-        layout.addStretch()
+        self._rating = 0.0
+        self._hover_rating = 0.0
+        self.setFixedSize(200, 40)
+        self.setCursor(Qt.PointingHandCursor)
 
-    def set_rating(self, val):
-        self._rating = val
-        self.update_stars()
-        self.ratingChanged.emit(self.value())
-
-    def set_hover(self, val):
-        self._hover_rating = val
-        self.update_stars()
-
-    def clear_hover(self):
-        self._hover_rating = 0
-        self.update_stars()
-
-    def update_stars(self):
-        val = self._hover_rating if self._hover_rating > 0 else self._rating
-        for i, lbl in enumerate(self.stars):
-            if i < val:
-                lbl.setText("★")
-            else:
-                lbl.setText("☆")
-                
     def value(self):
-        return self._rating * 2  
+        return self._rating
 
     def setValue(self, val):
-        self._rating = val // 2
-        self.update_stars()
+        self._rating = float(val)
+        self.update()
+
+    def mouseMoveEvent(self, e):
+        x = e.x()
+        star_width = self.width() / 5
+        val = (x / star_width)
+        rounded = round(val * 2) / 2
+        if rounded < 0.5: rounded = 0.5
+        if rounded > 5.0: rounded = 5.0
+        self._hover_rating = rounded
+        self.update()
+
+    def leaveEvent(self, e):
+        self._hover_rating = 0.0
+        self.update()
+
+    def mousePressEvent(self, e):
+        self._rating = self._hover_rating
+        self.ratingChanged.emit(self._rating)
+        self.update()
+
+    def paintEvent(self, e):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        val = self._hover_rating if self._hover_rating > 0 else self._rating
+        
+        font = QFont("Segoe UI", 28)
+        painter.setFont(font)
+        
+        star_width = self.width() / 5
+        for i in range(5):
+            rect = QRect(int(i * star_width), 0, int(star_width), self.height())
+            
+            if val >= i + 1:
+                painter.setPen(QColor("#f5c518"))
+                painter.drawText(rect, Qt.AlignCenter, "★")
+            elif val >= i + 0.5:
+                painter.setPen(QColor("#555555"))
+                painter.drawText(rect, Qt.AlignCenter, "★")
+                
+                painter.save()
+                clip_rect = QRect(rect.left(), rect.top(), int(rect.width() / 2), rect.height())
+                painter.setClipRect(clip_rect)
+                painter.setPen(QColor("#f5c518"))
+                painter.drawText(rect, Qt.AlignCenter, "★")
+                painter.restore()
+            else:
+                painter.setPen(QColor("#555555"))
+                painter.drawText(rect, Qt.AlignCenter, "★")
 
 class LoginWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("🎬 Movied")
+        self.setWindowTitle("🎬 episodd")
         self.resize(500, 450)
         self.center()
         
@@ -123,12 +140,13 @@ class LoginWindow(QMainWindow):
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignCenter)
 
-        logo_label = QLabel("🎬")
+        logo_label = QLabel()
+        logo_label.setPixmap(qta.icon('fa5s.film', color='#e50914').pixmap(72, 72))
         logo_label.setAlignment(Qt.AlignCenter)
-        logo_label.setStyleSheet("font-size: 72px; margin-bottom: 10px; background: transparent;")
+        logo_label.setStyleSheet("margin-bottom: 10px; background: transparent;")
         layout.addWidget(logo_label)
 
-        baslik = QLabel("Movied")
+        baslik = QLabel("episodd")
         baslik.setAlignment(Qt.AlignCenter)
         baslik.setStyleSheet("font-size: 32px; font-weight: bold; margin-bottom: 40px; color: #ffffff; background: transparent;")
         layout.addWidget(baslik)
@@ -254,21 +272,14 @@ class DegerlendirmePenceresi(QDialog):
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
 
-        lbl_durum = QLabel("İzleme Durumu:")
-        lbl_durum.setStyleSheet("font-size: 14px; font-weight: bold; background: transparent;")
-        layout.addWidget(lbl_durum)
-        
-        self.durum_kutusu = QComboBox()
-        self.durum_kutusu.addItems(["İzlenecek", "İzlendi", "Yarım Bırakıldı"])
-        self.durum_kutusu.setFixedHeight(40)
-        layout.addWidget(self.durum_kutusu)
+        # İzleme durumu kaldırıldı, değerlendiriliyorsa "İzlendi" kabul edilir
 
-        lbl_puan = QLabel("Puanın (10 Üzerinden):")
+        lbl_puan = QLabel("Puanın (5 Üzerinden):")
         lbl_puan.setStyleSheet("font-size: 14px; font-weight: bold; background: transparent;")
         layout.addWidget(lbl_puan)
         
         self.puan_widget = StarRatingWidget()
-        self.puan_widget.setValue(5)
+        self.puan_widget.setValue(2.5)
         layout.addWidget(self.puan_widget)
 
         lbl_yorum = QLabel("Yorumun / Analizin:")
@@ -289,7 +300,218 @@ class DegerlendirmePenceresi(QDialog):
         self.setStyleSheet(ana_tema)
 
     def verileri_al(self):
-        return self.durum_kutusu.currentText(), self.puan_widget.value(), self.yorum_kutusu.toPlainText()
+        return "İzlendi", self.puan_widget.value(), self.yorum_kutusu.toPlainText()
+
+class HoverOverlayWidget(QWidget):
+    def __init__(self, parent=None, film=None, main_app=None):
+        super().__init__(parent)
+        self.film = film
+        self.main_app = main_app
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setStyleSheet("background-color: rgba(0, 0, 0, 0.7); border-radius: 8px;")
+        
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignCenter)
+        
+        self.btn_izle = QPushButton(" Daha Sonra İzle")
+        self.btn_izle.setIcon(qta.icon('fa5s.clock', color='white'))
+        self.btn_izle.setObjectName("PrimaryButon")
+        self.btn_izle.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_izle.setFixedHeight(35)
+        self.btn_izle.clicked.connect(self.daha_sonra_izle)
+        
+        self.btn_degerlendir = QPushButton(" Değerlendir")
+        self.btn_degerlendir.setIcon(qta.icon('fa5s.star', color='white'))
+        self.btn_degerlendir.setObjectName("PrimaryButon")
+        self.btn_degerlendir.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_degerlendir.setFixedHeight(35)
+        self.btn_degerlendir.clicked.connect(self.degerlendir)
+        
+        layout.addWidget(self.btn_izle)
+        layout.addWidget(self.btn_degerlendir)
+        self.hide()
+        
+    def daha_sonra_izle(self):
+        self.main_app.listeye_ekle(self.film)
+        
+    def degerlendir(self):
+        movie_id = self.film.get('id')
+        title = self.film.get('title') or self.film.get('name', 'Bilinmiyor')
+        self.main_app.degerlendirme_ac(movie_id, title)
+
+class CarouselWidget(QWidget):
+    def __init__(self, api, parent=None):
+        super().__init__(parent)
+        self.api = api
+        self.main_app = parent
+        self.filmler = []
+        self.current_idx = 0
+        
+        layout = QHBoxLayout(self)
+        layout.setAlignment(Qt.AlignLeft)
+        
+        carousel_layout = QHBoxLayout()
+        carousel_layout.setAlignment(Qt.AlignLeft)
+        
+        self.btn_prev = QPushButton()
+        self.btn_prev.setIcon(qta.icon('fa5s.chevron-left', color='white'))
+        self.btn_prev.setFixedSize(40, 40)
+        self.btn_prev.setObjectName("PrimaryButon")
+        self.btn_prev.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_prev.clicked.connect(self.prev_film)
+        
+        self.btn_next = QPushButton()
+        self.btn_next.setIcon(qta.icon('fa5s.chevron-right', color='white'))
+        self.btn_next.setFixedSize(40, 40)
+        self.btn_next.setObjectName("PrimaryButon")
+        self.btn_next.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_next.clicked.connect(self.next_film)
+        
+        self.poster_container = QWidget()
+        self.poster_width = 715
+        self.poster_height = 450
+        self.poster_container.setFixedSize(self.poster_width, self.poster_height)
+        
+        self.afis_label = QLabel(self.poster_container)
+        self.afis_label.setGeometry(0, 0, self.poster_width, self.poster_height)
+        self.afis_label.setAlignment(Qt.AlignCenter)
+        
+        self.overlay = HoverOverlayWidget(self.poster_container, None, self.main_app)
+        self.overlay.setFixedSize(self.poster_width, self.poster_height)
+        self.ilerliyor = True
+        
+        def enter_event(e): self.overlay.show()
+        def leave_event(e): self.overlay.hide()
+        self.poster_container.enterEvent = enter_event
+        self.poster_container.leaveEvent = leave_event
+        
+        center_layout = QVBoxLayout()
+        center_layout.setAlignment(Qt.AlignCenter)
+        center_layout.addWidget(self.poster_container)
+        
+        carousel_layout.addWidget(self.btn_prev)
+        carousel_layout.addLayout(center_layout)
+        carousel_layout.addWidget(self.btn_next)
+        
+        layout.addLayout(carousel_layout)
+        
+        self.welcome_container = QWidget()
+        welcome_layout = QVBoxLayout(self.welcome_container)
+        welcome_layout.setAlignment(Qt.AlignCenter)
+        
+        welcome_title = QLabel("Episodd'a\nHoşgeldiniz!")
+        welcome_title.setStyleSheet("font-size: 26px; font-weight: bold; margin-bottom: 15px; background: transparent;")
+        welcome_title.setAlignment(Qt.AlignCenter)
+        
+        welcome_text = QLabel("En popüler içerikleri keşfedin,\nlistenizi oluşturun ve\nizlediklerinizi puanlayın.")
+        welcome_text.setWordWrap(True)
+        welcome_text.setStyleSheet("font-size: 16px; line-height: 1.5; color: palette(text); background: transparent;")
+        welcome_text.setAlignment(Qt.AlignCenter)
+        
+        welcome_layout.addWidget(welcome_title)
+        welcome_layout.addWidget(welcome_text)
+        
+        layout.addStretch()
+        layout.addWidget(self.welcome_container)
+        layout.addStretch()
+        
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.next_film)
+        self.timer.start(5000)
+        self.active_loader = None
+
+    def set_filmler(self, filmler):
+        self.filmler = filmler
+        self.current_idx = 0
+        self.update_ui()
+        
+    def prev_film(self):
+        if not self.filmler: return
+        self.ilerliyor = False
+        self.current_idx = (self.current_idx - 1) % len(self.filmler)
+        self.update_ui()
+        self.timer.start(5000)
+        
+    def next_film(self):
+        if not self.filmler: return
+        self.ilerliyor = True
+        self.current_idx = (self.current_idx + 1) % len(self.filmler)
+        self.update_ui()
+        self.timer.start(5000)
+        
+    def update_ui(self):
+        if not self.filmler: return
+        film = self.filmler[self.current_idx]
+        self.overlay.film = film
+        self.overlay.hide()
+        self.overlay.raise_()
+        
+        title = film.get('title') or film.get('name', 'Bilinmiyor')
+        yil = film.get('release_date') or film.get('first_air_date', ' ')
+        
+        poster_path = film.get('poster_path')
+        if poster_path:
+            if not self.afis_label.pixmap():
+                self.afis_label.setText("Yükleniyor...")
+            
+            # Eski indirmeyi iptal etmek yerine sadece arayüzü güncellemesini engelliyoruz
+            if getattr(self, 'active_loader', None):
+                try:
+                    self.active_loader.poster_downloaded.disconnect()
+                except (TypeError, RuntimeError):
+                    pass
+                    
+            loader = PosterLoader(self.api, poster_path, self)
+            self.main_app.active_threads.append(loader)
+            loader.poster_downloaded.connect(self.afis_yukle)
+            loader.finished.connect(lambda t=loader: self.main_app.cleanup_thread(t))
+            loader.start()
+            self.active_loader = loader
+        else:
+            self.afis_label.setText("Afiş Yok")
+            
+    def afis_yukle(self, veri):
+        pixmap = QPixmap()
+        if pixmap.loadFromData(veri):
+            scaled_pixmap = pixmap.scaled(self.poster_width, self.poster_height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            
+            if not self.afis_label.pixmap():
+                self.afis_label.setPixmap(scaled_pixmap)
+                return
+                
+            self.new_afis_label = QLabel(self.poster_container)
+            self.new_afis_label.setAlignment(Qt.AlignCenter)
+            self.new_afis_label.setPixmap(scaled_pixmap)
+            self.new_afis_label.resize(self.poster_width, self.poster_height)
+            self.new_afis_label.show()
+            self.new_afis_label.lower()
+            
+            direction = 1 if getattr(self, 'ilerliyor', True) else -1
+            self.new_afis_label.move(direction * self.poster_width, 0)
+            
+            self.anim_group = QParallelAnimationGroup(self)
+            
+            anim1 = QPropertyAnimation(self.afis_label, b"pos", self)
+            anim1.setDuration(400)
+            anim1.setStartValue(self.afis_label.pos())
+            anim1.setEndValue(self.afis_label.pos() + QPoint(-direction * self.poster_width, 0))
+            anim1.setEasingCurve(QEasingCurve.InOutQuad)
+            
+            anim2 = QPropertyAnimation(self.new_afis_label, b"pos", self)
+            anim2.setDuration(400)
+            anim2.setStartValue(self.new_afis_label.pos())
+            anim2.setEndValue(QPoint(0, 0))
+            anim2.setEasingCurve(QEasingCurve.InOutQuad)
+            
+            self.anim_group.addAnimation(anim1)
+            self.anim_group.addAnimation(anim2)
+            self.anim_group.finished.connect(self.animasyon_bitti)
+            self.anim_group.start()
+            
+    def animasyon_bitti(self):
+        self.afis_label.deleteLater()
+        self.afis_label = self.new_afis_label
+        self.overlay.raise_()
 
 class MovieApp(QMainWindow):
     def __init__(self, username, user_id, db_manager):
@@ -299,13 +521,17 @@ class MovieApp(QMainWindow):
         self.db = db_manager 
         self.secili_tema = "Netflix" # Default tema
         
-        self.setWindowTitle("Movied")
+        self.setWindowTitle("episodd")
         self.setGeometry(100, 100, 1100, 850)
         self.api = MovieAPI()
         self.active_threads = []
         
+        
+        
         self.arayuzu_hazirla()
         self.temayi_guncelle(self.secili_tema)
+
+    
 
     def arayuzu_hazirla(self):
         merkez = QWidget()
@@ -321,15 +547,21 @@ class MovieApp(QMainWindow):
         header_layout = QHBoxLayout(self.header)
         header_layout.setContentsMargins(20, 0, 30, 0)
         
-        logo = QLabel("🎬 Movied")
+        logo_icon = QLabel()
+        logo_icon.setPixmap(qta.icon('fa5s.film', color='#e50914').pixmap(30, 30))
+        logo = QLabel(" episodd")
         logo.setObjectName("HeaderLogo")
         logo.setStyleSheet("font-size: 26px; font-weight: bold; background: transparent;")
+        
+        header_h = QHBoxLayout()
+        header_h.addWidget(logo_icon)
+        header_h.addWidget(logo)
         
         self.kullanici_hosgeldin = QLabel(f"Hoşgeldin, {self.username}")
         self.kullanici_hosgeldin.setObjectName("HeaderUser")
         self.kullanici_hosgeldin.setStyleSheet("font-size: 16px; font-weight: bold; background: transparent;")
         
-        header_layout.addWidget(logo)
+        header_layout.addLayout(header_h)
         header_layout.addStretch()
         header_layout.addWidget(self.kullanici_hosgeldin)
 
@@ -342,63 +574,73 @@ class MovieApp(QMainWindow):
         self.sekmeler.setStyleSheet("QTabBar::tab { width: 150px; height: 40px; }")
 
         self.ana_sekme = QWidget()
-        self.arama_sekmesi = QWidget()
         self.liste_sekmesi = QWidget()
         self.ayarlar_sekmesi = QWidget()
 
-        self.sekmeler.addTab(self.ana_sekme, "🏠 Ana Menü")
-        self.sekmeler.addTab(self.arama_sekmesi, "🔍 Film Ara")
-        self.sekmeler.addTab(self.liste_sekmesi, "⭐ Listem")
-        self.sekmeler.addTab(self.ayarlar_sekmesi, "⚙️ Ayarlar")
+        self.sekmeler.addTab(self.ana_sekme, qta.icon('fa5s.home'), " Ana Menü")
+        self.sekmeler.addTab(self.liste_sekmesi, qta.icon('fa5s.list'), " Listem")
+        self.sekmeler.addTab(self.ayarlar_sekmesi, qta.icon('fa5s.cog'), " Ayarlar")
 
         self.ana_sekmesini_kur()
-        self.arama_sekmesini_kur()
         self.liste_sekmesini_kur()
         self.ayarlar_sekmesini_kur()
 
         self.sekmeler.currentChanged.connect(self.sekme_degisti)
 
-    def film_karti_olustur(self, film):
+    def film_karti_olustur(self, film, is_large=False):
         film_kutusu = QWidget()
-        film_kutusu.setFixedSize(180, 310)
+        width = 180
+        height = 310
+        film_kutusu.setFixedSize(width, height)
         film_kutusu.setObjectName("FilmKarti")
         
         kutu_layout = QVBoxLayout(film_kutusu)
         kutu_layout.setContentsMargins(8, 8, 8, 8)
         
+        poster_container = QWidget()
+        afis_width = 160
+        afis_height = 240
+        poster_container.setFixedSize(afis_width, afis_height)
+        
+        p_layout = QVBoxLayout(poster_container)
+        p_layout.setContentsMargins(0, 0, 0, 0)
+        
         afis_label = QLabel()
         afis_label.setAlignment(Qt.AlignCenter)
-        afis_label.setStyleSheet("background: transparent;")
+        p_layout.addWidget(afis_label)
+        
+        overlay = HoverOverlayWidget(poster_container, film, self)
+        overlay.setFixedSize(afis_width, afis_height)
+        
+        def enter_event(e): overlay.show()
+        def leave_event(e): overlay.hide()
+        poster_container.enterEvent = enter_event
+        poster_container.leaveEvent = leave_event
+        
         poster_path = film.get('poster_path')
         if poster_path:
             afis_label.setText("Yükleniyor...")
             afis_label.setStyleSheet("color: #666; font-size: 12px; background: transparent;")
             loader = PosterLoader(self.api, poster_path, self)
             self.active_threads.append(loader)
-            loader.poster_downloaded.connect(lambda veri, lbl=afis_label: self.afis_yukle(lbl, veri, 130, 195))
+            loader.poster_downloaded.connect(lambda veri, lbl=afis_label: self.afis_yukle(lbl, veri, afis_width, afis_height))
             loader.finished.connect(lambda t=loader: self.cleanup_thread(t))
             loader.start()
         else:
             afis_label.setText("Afiş Yok")
             afis_label.setStyleSheet("color: #666; font-size: 12px; background: transparent;")
         
-        yil = film.get('release_date', ' ')[:4]
-        baslik = film.get('title', 'Bilinmiyor')
+        yil = film.get('release_date') or film.get('first_air_date', ' ')
+        yil = yil[:4]
+        baslik = film.get('title') or film.get('name', 'Bilinmiyor')
         if len(baslik) > 18: baslik = baslik[:16] + "..."
         bilgi_label = QLabel(f"{baslik}\n({yil})")
         bilgi_label.setAlignment(Qt.AlignCenter)
         bilgi_label.setStyleSheet("font-size: 13px; font-weight: bold; margin-top: 4px; background: transparent;")
         
-        ekle_butonu = QPushButton("+ Listeye Ekle")
-        ekle_butonu.setObjectName("EkleButonu")
-        ekle_butonu.setFixedHeight(28)
-        ekle_butonu.setCursor(QCursor(Qt.PointingHandCursor))
-        ekle_butonu.clicked.connect(lambda checked, f=film: self.listeye_ekle(f))
-        
-        kutu_layout.addWidget(afis_label)
-        kutu_layout.addWidget(bilgi_label)
+        kutu_layout.addWidget(poster_container)
         kutu_layout.addStretch()
-        kutu_layout.addWidget(ekle_butonu)
+        kutu_layout.addWidget(bilgi_label)
         return film_kutusu
 
     def cleanup_thread(self, thread):
@@ -413,33 +655,73 @@ class MovieApp(QMainWindow):
             label.setText("")
 
     def ana_sekmesini_kur(self):
-        layout = QVBoxLayout(self.ana_sekme)
-        layout.setContentsMargins(20, 20, 20, 20)
+        self.ana_layout = QVBoxLayout(self.ana_sekme)
+        self.ana_layout.setContentsMargins(20, 20, 20, 20)
         
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setObjectName("AnaMenuScroll")
-        icerik = QWidget()
-        icerik.setObjectName("AnaMenuIcerik")
-        icerik_layout = QVBoxLayout(icerik)
+        # Arama Kısmı
+        arama_layout = QHBoxLayout()
+        self.arama_kutusu = QLineEdit()
+        self.arama_kutusu.setPlaceholderText("Film veya dizi adı girin...")
+        self.arama_kutusu.setFixedHeight(45)
         
-        baslik1 = QLabel("🔥 Yeni Çıkan Filmler")
+        self.arama_butonu = QPushButton(" Ara")
+        self.arama_butonu.setIcon(qta.icon('fa5s.search', color='white'))
+        self.arama_butonu.setFixedSize(120, 45)
+        self.arama_butonu.setCursor(QCursor(Qt.PointingHandCursor))
+        self.arama_butonu.setObjectName("PrimaryButon")
+        self.arama_butonu.clicked.connect(self.arama_yap)
+        self.arama_kutusu.returnPressed.connect(self.arama_yap)
+        
+        arama_layout.addWidget(self.arama_kutusu)
+        arama_layout.addWidget(self.arama_butonu)
+        self.ana_layout.addLayout(arama_layout)
+        
+        self.main_scroll = QScrollArea()
+        self.main_scroll.setWidgetResizable(True)
+        self.main_scroll.setObjectName("AnaMenuScroll")
+        self.icerik_widget = QWidget()
+        self.icerik_widget.setObjectName("AnaMenuIcerik")
+        self.icerik_layout = QVBoxLayout(self.icerik_widget)
+        
+        # Arama Sonuçları (Gizli)
+        self.arama_sonuc_widget = QWidget()
+        self.arama_grid = QGridLayout(self.arama_sonuc_widget)
+        self.arama_grid.setSpacing(15)
+        self.arama_grid.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
+        
+        self.arama_ust_layout = QHBoxLayout()
+        self.arama_baslik = QLabel(" Arama Sonuçları")
+        self.arama_baslik.setObjectName("KategoriBaslik")
+        self.arama_geri_btn = QPushButton(" Geri Dön")
+        self.arama_geri_btn.setIcon(qta.icon('fa5s.arrow-left', color='white'))
+        self.arama_geri_btn.setObjectName("PrimaryButon")
+        self.arama_geri_btn.setFixedHeight(35)
+        self.arama_geri_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.arama_geri_btn.clicked.connect(self.arama_geri_don)
+        self.arama_ust_layout.addWidget(self.arama_baslik)
+        self.arama_ust_layout.addStretch()
+        self.arama_ust_layout.addWidget(self.arama_geri_btn)
+        
+        self.arama_container = QWidget()
+        arama_v = QVBoxLayout(self.arama_container)
+        arama_v.addLayout(self.arama_ust_layout)
+        arama_v.addWidget(self.arama_sonuc_widget)
+        self.arama_container.hide()
+        
+        # Normal İçerik
+        self.normal_icerik_container = QWidget()
+        self.normal_icerik_layout = QVBoxLayout(self.normal_icerik_container)
+        
+        baslik1 = QLabel(" Yeni Çıkanlar")
         baslik1.setObjectName("KategoriBaslik")
-        icerik_layout.addWidget(baslik1)
+        self.normal_icerik_layout.addWidget(baslik1)
         
-        yeni_scroll = QScrollArea()
-        yeni_scroll.setFixedHeight(340)
-        yeni_scroll.setWidgetResizable(True)
-        yeni_icerik = QWidget()
-        yeni_icerik.setObjectName("YatayIcerik")
-        self.yeni_layout = QHBoxLayout(yeni_icerik)
-        self.yeni_layout.setAlignment(Qt.AlignLeft)
-        yeni_scroll.setWidget(yeni_icerik)
-        icerik_layout.addWidget(yeni_scroll)
-
-        baslik2 = QLabel("🌟 En Yüksek Puanlılar (IMDb Top)")
+        self.carousel = CarouselWidget(self.api, self)
+        self.normal_icerik_layout.addWidget(self.carousel)
+        
+        baslik2 = QLabel(" En Yüksek Puanlılar")
         baslik2.setObjectName("KategoriBaslik")
-        icerik_layout.addWidget(baslik2)
+        self.normal_icerik_layout.addWidget(baslik2)
         
         top_scroll = QScrollArea()
         top_scroll.setFixedHeight(340)
@@ -449,13 +731,14 @@ class MovieApp(QMainWindow):
         self.top_layout = QHBoxLayout(top_icerik)
         self.top_layout.setAlignment(Qt.AlignLeft)
         top_scroll.setWidget(top_icerik)
-        icerik_layout.addWidget(top_scroll)
+        self.normal_icerik_layout.addWidget(top_scroll)
         
-        scroll.setWidget(icerik)
-        layout.addWidget(scroll)
+        self.icerik_layout.addWidget(self.normal_icerik_container)
+        self.icerik_layout.addWidget(self.arama_container)
+        self.main_scroll.setWidget(self.icerik_widget)
+        self.ana_layout.addWidget(self.main_scroll)
 
-        self.yeni_layout.addWidget(QLabel("Filmler yükleniyor..."))
-        self.top_layout.addWidget(QLabel("Filmler yükleniyor..."))
+        self.top_layout.addWidget(QLabel("İçerikler yükleniyor..."))
 
         self.data_loader = DataLoader(self.api, self)
         self.active_threads.append(self.data_loader)
@@ -464,61 +747,25 @@ class MovieApp(QMainWindow):
         self.data_loader.start()
 
     def ana_menu_filmleri_doldur(self, yeni_filmler, top_filmler):
-        for i in reversed(range(self.yeni_layout.count())): 
-            w = self.yeni_layout.itemAt(i).widget()
-            if w: w.setParent(None)
         for i in reversed(range(self.top_layout.count())): 
             w = self.top_layout.itemAt(i).widget()
             if w: w.setParent(None)
 
         if yeni_filmler:
-            for film in yeni_filmler:
-                kutu = self.film_karti_olustur(film)
-                self.yeni_layout.addWidget(kutu)
-        else:
-            self.yeni_layout.addWidget(QLabel("Filmler yüklenemedi."))
+            self.carousel.set_filmler(yeni_filmler)
             
         if top_filmler:
             for film in top_filmler:
                 kutu = self.film_karti_olustur(film)
                 self.top_layout.addWidget(kutu)
         else:
-            self.top_layout.addWidget(QLabel("Filmler yüklenemedi."))
-
-    def arama_sekmesini_kur(self):
-        ana_layout = QVBoxLayout(self.arama_sekmesi)
-        ana_layout.setContentsMargins(20, 20, 20, 20)
-
-        arama_layout = QHBoxLayout()
-        self.arama_kutusu = QLineEdit()
-        self.arama_kutusu.setPlaceholderText("Film adı girin...")
-        self.arama_kutusu.setFixedHeight(45)
-        self.arama_butonu = QPushButton("Ara")
-        self.arama_butonu.setFixedSize(120, 45)
-        self.arama_butonu.setCursor(QCursor(Qt.PointingHandCursor))
-        self.arama_butonu.setObjectName("PrimaryButon")
-        self.arama_butonu.clicked.connect(self.arama_yap)
-        self.arama_kutusu.returnPressed.connect(self.arama_yap)
-        
-        arama_layout.addWidget(self.arama_kutusu)
-        arama_layout.addWidget(self.arama_butonu)
-        ana_layout.addLayout(arama_layout)
-
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.sonuc_widget = QWidget()
-        self.sonuc_widget.setObjectName("IcerikPaneli")
-        self.grid_layout = QGridLayout(self.sonuc_widget)
-        self.grid_layout.setSpacing(15)
-        self.grid_layout.setAlignment(Qt.AlignTop)
-        self.scroll_area.setWidget(self.sonuc_widget)
-        ana_layout.addWidget(self.scroll_area)
+            self.top_layout.addWidget(QLabel("İçerikler yüklenemedi."))
 
     def liste_sekmesini_kur(self):
         layout = QVBoxLayout(self.liste_sekmesi)
         layout.setContentsMargins(20, 20, 20, 20)
         
-        baslik = QLabel("⭐ Kaydettiğin Filmler")
+        baslik = QLabel(" Listem")
         baslik.setObjectName("KategoriBaslik")
         layout.addWidget(baslik)
 
@@ -605,8 +852,11 @@ class MovieApp(QMainWindow):
 
     def get_stars_text(self, rating):
         if not rating: return "Puanlanmadı"
-        r = int(rating // 2)
-        return ("★" * r) + ("☆" * (5 - r))
+        r = float(rating)
+        full = int(r)
+        half = 1 if r - full >= 0.5 else 0
+        empty = 5 - full - half
+        return ("★" * full) + ("½" * half) + ("☆" * empty)
 
     def listeyi_guncelle(self):
         for i in reversed(range(self.liste_grid.count())): 
@@ -659,13 +909,15 @@ class MovieApp(QMainWindow):
             
             puan_label = QLabel(self.get_stars_text(rating))
             puan_label.setAlignment(Qt.AlignCenter)
-            puan_label.setStyleSheet("color: #f5c518; font-size: 16px; background: transparent;")
+            puan_label.setStyleSheet("color: #f5c518; font-size: 14px; background: transparent;")
             
             yorum_preview = QLabel(f"{review[:30]}..." if review and len(review) > 30 else (review or ""))
             yorum_preview.setAlignment(Qt.AlignCenter)
             yorum_preview.setStyleSheet("color: #888; font-size: 11px; font-style: italic; background: transparent;")
 
-            puanla_butonu = QPushButton("Değerlendir")
+            import qtawesome as qta
+            puanla_butonu = QPushButton(" Değerlendir")
+            puanla_butonu.setIcon(qta.icon('fa5s.star', color='#f5c518'))
             puanla_butonu.setObjectName("DegerlendirButonu")
             puanla_butonu.setFixedHeight(30)
             puanla_butonu.setCursor(QCursor(Qt.PointingHandCursor))
@@ -686,25 +938,34 @@ class MovieApp(QMainWindow):
                 satir += 1
 
     def sekme_degisti(self, index):
-        if index == 2: # Listem
+        if index == 1: # Listem is now index 1
             self.listeyi_guncelle()
 
-    def gridi_temizle(self):
-        for i in reversed(range(self.grid_layout.count())): 
-            w = self.grid_layout.itemAt(i).widget()
+    def gridi_temizle(self, grid):
+        for i in reversed(range(grid.count())): 
+            w = grid.itemAt(i).widget()
             if w:
-                self.grid_layout.removeWidget(w)
+                grid.removeWidget(w)
                 w.setParent(None)
 
+    def arama_geri_don(self):
+        self.arama_kutusu.clear()
+        self.arama_container.hide()
+        self.normal_icerik_container.show()
+        
     def arama_yap(self):
         aranan = self.arama_kutusu.text()
         if not aranan: return
-        self.gridi_temizle()
+        
+        self.normal_icerik_container.hide()
+        self.arama_container.show()
+        
+        self.gridi_temizle(self.arama_grid)
         QApplication.processEvents()
         
         lbl = QLabel("Aranıyor...")
         lbl.setStyleSheet("font-size: 16px; font-weight: bold; background: transparent;")
-        self.grid_layout.addWidget(lbl, 0, 0)
+        self.arama_grid.addWidget(lbl, 0, 0)
         
         self.arama_butonu.setEnabled(False)
         self.search_loader = SearchLoader(self.api, aranan, self)
@@ -715,18 +976,18 @@ class MovieApp(QMainWindow):
 
     def arama_sonuclarini_goster(self, sonuclar):
         self.arama_butonu.setEnabled(True)
-        self.gridi_temizle()
+        self.gridi_temizle(self.arama_grid)
         
         if sonuclar:
             satir, sutun = 0, 0
             for film in sonuclar:
                 kutu = self.film_karti_olustur(film)
-                self.grid_layout.addWidget(kutu, satir, sutun)
+                self.arama_grid.addWidget(kutu, satir, sutun)
                 sutun += 1
-                if sutun >= 5:
+                if sutun >= max(1, self.width() // 200):
                     sutun = 0; satir += 1
         else:
-            self.grid_layout.addWidget(QLabel("Sonuç bulunamadı."), 0, 0)
+            self.arama_grid.addWidget(QLabel("Sonuç bulunamadı."), 0, 0)
 
     def listeye_ekle(self, film):
         self.db.film_kaydet(film.get('id'), film.get('title', ''), film.get('poster_path', ''))
@@ -769,6 +1030,17 @@ class MovieApp(QMainWindow):
 
         # Accent metin rengi
         accent_text = "#000000" if tema_adi == "IMDb" else "#FFFFFF"
+
+        # Tab ve Buton ikonlarını tema rengine göre güncelle
+        self.sekmeler.setTabIcon(0, qta.icon('fa5s.home', color=text_main))
+        self.sekmeler.setTabIcon(1, qta.icon('fa5s.list', color=text_main))
+        self.sekmeler.setTabIcon(2, qta.icon('fa5s.cog', color=text_main))
+        
+        self.arama_butonu.setIcon(qta.icon('fa5s.search', color=accent_text))
+        self.arama_geri_btn.setIcon(qta.icon('fa5s.arrow-left', color=accent_text))
+        if hasattr(self, 'carousel'):
+            self.carousel.btn_prev.setIcon(qta.icon('fa5s.chevron-left', color=accent_text))
+            self.carousel.btn_next.setIcon(qta.icon('fa5s.chevron-right', color=accent_text))
 
         stil = f"""
         QMainWindow, QDialog, QScrollArea, QWidget {{ 
