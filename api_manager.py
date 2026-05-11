@@ -74,7 +74,7 @@ class MovieAPI:
             return None 
             
 
-        url = f"https://image.tmdb.org/t/p/w200{poster_path}"
+        url = f"https://image.tmdb.org/t/p/w500{poster_path}"
         
         try:
             # Görsel verisini indiriyoruz
