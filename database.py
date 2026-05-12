@@ -101,6 +101,14 @@ class DatabaseManager:
         ''', (status, rating, review, user_id, movie_id))
         self.conn.commit()
 
+    def kullanici_film_sil(self, user_id, movie_id):
+        self.cursor.execute('''
+            DELETE FROM user_movies 
+            WHERE user_id = ? AND movie_id = ?
+        ''', (user_id, movie_id))
+        self.conn.commit()
+        return self.cursor.rowcount > 0
+
 
 if __name__ == "__main__":
     db = DatabaseManager()
