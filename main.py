@@ -1,19 +1,12 @@
 from PyQt5 import QtCore
 from dotenv import parser
-from PyQt5 import QtCore
-from PyQt5 import QtCore
-from PyQt5 import QtCore
-from PyQt5 import QtCore
-from PyQt5 import QtCore
-from PyQt5 import QtCore
-from PyQt5 import QtCore
 import sys
 import hashlib
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLineEdit, QPushButton, QLabel, 
                              QGridLayout, QScrollArea, QMessageBox, QTabWidget,
-                             QDialog, QComboBox, QSpinBox, QTextEdit, QDesktopWidget, QAction, QGroupBox, QFormLayout)
-from PyQt5.QtGui import QPixmap, QFont, QCursor, QIcon
+                             QDialog, QComboBox, QTextEdit, QDesktopWidget, QGroupBox, QFormLayout)
+from PyQt5.QtGui import QPixmap, QFont, QCursor
 from PyQt5.QtCore import Qt, pyqtSignal, QThread, QTimer, QRect, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QPoint
 from api_manager import MovieAPI
 from database import DatabaseManager
@@ -1069,7 +1062,7 @@ class MovieApp(QMainWindow):
         if rating:
             puan_label = QLabel(self.get_stars_text(rating))
             puan_label.setAlignment(Qt.AlignCenter)
-            puan_label.setStyleSheet("color: #f5c518; font-size: 12px; background: transparent;")
+            puan_label.setStyleSheet("color: #f5c518; font-size: 18px; background: transparent;")
             kutu_layout.addWidget(puan_label)
         
         # Karta tıklanınca detay penceresi aç
@@ -1192,7 +1185,8 @@ class MovieApp(QMainWindow):
             self.arama_grid.addWidget(QLabel("Sonuç bulunamadı."), 0, 0)
 
     def listeye_ekle(self, film):
-        self.db.film_kaydet(film.get('id'), film.get('title', ''), film.get('poster_path', ''))
+        title = film.get('title') or film.get('name', 'Bilinmiyor')
+        self.db.film_kaydet(film.get('id'), title, film.get('poster_path', ''))
         if self.db.kullanici_film_ekle(self.user_id, film.get('id')):
             QMessageBox.information(self, "Başarılı", "Listeye eklendi!")
         else:
