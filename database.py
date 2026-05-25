@@ -61,6 +61,16 @@ class DatabaseManager:
             return True
         except sqlite3.IntegrityError:
             return False
+            
+    def sifre_dogrula(self, user_id, password):
+        hashed_pw = hashlib.sha256(password.encode()).hexdigest()
+        self.cursor.execute("SELECT id FROM users WHERE id = ? AND password_hash = ?", (user_id, hashed_pw))
+        return self.cursor.fetchone() is not None
+
+    def kullanici_sil(self, user_id):
+        self.cursor.execute("DELETE FROM user_movies WHERE user_id = ?", (user_id,))
+        self.cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        self.conn.commit()
     
     def film_kaydet(self, tmdb_id, title, poster_path):
         self.cursor.execute('''
