@@ -31,7 +31,6 @@ class MovieAPI:
             
     def en_yuksek_puanli_filmler(self):
         movie_url = f"{self.base_url}/movie/top_rated"
-        tv_url = f"{self.base_url}/tv/top_rated"
         params = {
             "api_key": self.api_key,
             "language": "en-EN",
@@ -41,14 +40,25 @@ class MovieAPI:
             movie_res = requests.get(movie_url, params=params)
             movie_res.raise_for_status()
             movies = movie_res.json().get("results", [])
+            for m in movies: m['media_type'] = 'movie'
+            return movies[:10]
+        except requests.exceptions.RequestException as e:
+            print(f"Top Rated API hatası: {e}")
+            return []
 
+    def en_yuksek_puanli_diziler(self):
+        tv_url = f"{self.base_url}/tv/top_rated"
+        params = {
+            "api_key": self.api_key,
+            "language": "en-EN",
+            "page": 1
+        }
+        try:
             tv_res = requests.get(tv_url, params=params)
             tv_res.raise_for_status()
             tvs = tv_res.json().get("results", [])
-
-            combined = movies + tvs
-            combined.sort(key=lambda x: x.get("vote_average", 0), reverse=True)
-            return combined[:10]
+            for t in tvs: t['media_type'] = 'tv'
+            return tvs[:10]
         except requests.exceptions.RequestException as e:
             print(f"Top Rated API hatası: {e}")
             return []
@@ -69,6 +79,28 @@ class MovieAPI:
             print(f"Now Playing API hatası: {e}")
             return []
         
+    def film_detay_ve_kredileri(self, film_id, media_type="movie"):
+        if not media_type:
+            media_type = "movie"
+        url = f"{self.base_url}/{media_type}/{film_id}"
+        params = {
+            "api_key": self.api_key,
+            "language": "en-EN",
+            "append_to_response": "credits"
+        }
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            credits = data.get("credits", {})
+            cast = credits.get("cast", [])[:6]
+            crew = credits.get("crew", [])
+            directors = [c for c in crew if c.get("job") == "Director"][:2]
+            return data, cast, directors
+        except requests.exceptions.RequestException as e:
+            print(f"Details API hatası: {e}")
+            return {}, [], []
+
     def poster_indir(self, poster_path):
         if not poster_path:
             return None 
