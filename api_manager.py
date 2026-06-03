@@ -7,14 +7,18 @@ load_dotenv()
 class MovieAPI:
     def __init__(self):
         self.api_key = os.getenv("TMDB_API_KEY")
+        self.omdb_api_key = os.getenv("OMDB_API_KEY")
         self.base_url = "https://api.themoviedb.org/3"
+
+    def _get_lang_code(self):
+        return "tr-TR"
 
     def film_ara(self, film_adi):
         url = f"{self.base_url}/search/multi"
         params = {
             "api_key": self.api_key,
             "query": film_adi,
-            "language": "en-EN" 
+            "language": self._get_lang_code() 
         }
         
         try:
@@ -33,7 +37,7 @@ class MovieAPI:
         movie_url = f"{self.base_url}/movie/top_rated"
         params = {
             "api_key": self.api_key,
-            "language": "en-EN",
+            "language": self._get_lang_code(),
             "page": 1
         }
         try:
@@ -50,7 +54,7 @@ class MovieAPI:
         tv_url = f"{self.base_url}/tv/top_rated"
         params = {
             "api_key": self.api_key,
-            "language": "en-EN",
+            "language": self._get_lang_code(),
             "page": 1
         }
         try:
@@ -67,7 +71,7 @@ class MovieAPI:
         url = f"{self.base_url}/trending/all/day"
         params = {
             "api_key": self.api_key,
-            "language": "en-EN",
+            "language": self._get_lang_code(),
             "page": 1
         }
         try:
@@ -85,8 +89,8 @@ class MovieAPI:
         url = f"{self.base_url}/{media_type}/{film_id}"
         params = {
             "api_key": self.api_key,
-            "language": "en-EN",
-            "append_to_response": "credits"
+            "language": self._get_lang_code(),
+            "append_to_response": "credits,external_ids"
         }
         try:
             response = requests.get(url, params=params)
@@ -100,6 +104,36 @@ class MovieAPI:
         except requests.exceptions.RequestException as e:
             print(f"Details API hatası: {e}")
             return {}, [], []
+
+    def dizi_sezon_getir(self, series_id, season_number):
+        url = f"{self.base_url}/tv/{series_id}/season/{season_number}"
+        params = {
+            "api_key": self.api_key,
+            "language": self._get_lang_code()
+        }
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Season API hatası (S{season_number}): {e}")
+            return {}
+
+    def omdb_sezon_getir(self, imdb_id, season_number):
+        if not self.omdb_api_key: return {}
+        url = "http://www.omdbapi.com/"
+        params = {
+            "i": imdb_id,
+            "Season": season_number,
+            "apikey": self.omdb_api_key
+        }
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"OMDB Season API hatası (S{season_number}): {e}")
+            return {}
 
     def poster_indir(self, poster_path):
         if not poster_path:
