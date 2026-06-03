@@ -20,9 +20,15 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS movies (
                 tmdb_id INTEGER PRIMARY KEY, 
                 title TEXT NOT NULL,
-                poster_path TEXT
+                poster_path TEXT,
+                media_type TEXT DEFAULT 'movie'
             )
         ''')
+
+        try:
+            self.cursor.execute("ALTER TABLE movies ADD COLUMN media_type TEXT DEFAULT 'movie'")
+        except sqlite3.OperationalError:
+            pass
 
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_movies (
@@ -72,11 +78,17 @@ class DatabaseManager:
         self.cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
         self.conn.commit()
     
-    def film_kaydet(self, tmdb_id, title, poster_path):
-        self.cursor.execute('''
-            INSERT OR IGNORE INTO movies (tmdb_id, title, poster_path)
-            VALUES (?, ?, ?)
-        ''', (tmdb_id, title, poster_path))
+    def film_kaydet(self, tmdb_id, title, poster_path, media_type='movie'):
+        self.cursor.execute('SELECT tmdb_id FROM movies WHERE tmdb_id = ?', (tmdb_id,))
+        if self.cursor.fetchone():
+            self.cursor.execute('''
+                UPDATE movies SET title = ?, poster_path = ?, media_type = ? WHERE tmdb_id = ?
+            ''', (title, poster_path, media_type, tmdb_id))
+        else:
+            self.cursor.execute('''
+                INSERT INTO movies (tmdb_id, title, poster_path, media_type)
+                VALUES (?, ?, ?, ?)
+            ''', (tmdb_id, title, poster_path, media_type))
         self.conn.commit()
 
     def kullanici_film_ekle(self, user_id, movie_id, status="izlenecek"):
@@ -96,7 +108,7 @@ class DatabaseManager:
     
     def kullanicinin_filmlerini_getir(self, user_id):
         self.cursor.execute('''
-            SELECT m.tmdb_id, m.title, m.poster_path, um.status, um.rating, um.review
+            SELECT m.tmdb_id, m.title, m.poster_path, um.status, um.rating, um.review, m.media_type
             FROM movies m
             JOIN user_movies um ON m.tmdb_id = um.movie_id
             WHERE um.user_id = ?
@@ -118,6 +130,13 @@ class DatabaseManager:
         ''', (user_id, movie_id))
         self.conn.commit()
         return self.cursor.rowcount > 0
+
+    def kullanici_film_detay_getir(self, user_id, movie_id):
+        self.cursor.execute('''
+            SELECT status, rating, review FROM user_movies
+            WHERE user_id = ? AND movie_id = ?
+        ''', (user_id, movie_id))
+        return self.cursor.fetchone()
 
 
 if __name__ == "__main__":
